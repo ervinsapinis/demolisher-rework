@@ -1,0 +1,9 @@
+{
+  "name": "demolisher-rework",
+  "version": "0.1.0",
+  "title": "Demolisher Rework",
+  "author": "Ervins",
+  "description": "Smaller territories, demolisher migration into contested land, fresh construction triggers enrage.",
+  "factorio_version": "2.0",
+  "dependencies": ["space-age"]
+}
