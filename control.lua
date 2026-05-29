@@ -126,6 +126,39 @@ local function in_list(list, key, value)
     return false
 end
 
+-- Removes migration_queue / migrating_units entries whose territory no longer
+-- needs an overlay: either it was re-occupied, or the player cleared all of its
+-- occupied neighbours so it is no longer contested.
+-- Orphaned migrants are killed so they don't wander.
+-- Returns true if anything changed (overlay must be refreshed).
+local function prune_stale(surface)
+    local dirty = false
+
+    local function needs_overlay(t)
+        return t and t.valid and not is_occupied(t) and is_contested(surface, t)
+    end
+
+    local q2 = {}
+    for _, e in pairs(storage.migration_queue) do
+        if needs_overlay(e.territory) then q2[#q2+1] = e
+        else dirty = true end
+    end
+    storage.migration_queue = q2
+
+    local m2 = {}
+    for _, m in pairs(storage.migrating_units) do
+        if needs_overlay(m.target_territory) then
+            m2[#m2+1] = m
+        else
+            if m.unit and m.unit.valid then m.unit.die() end
+            dirty = true
+        end
+    end
+    storage.migrating_units = m2
+
+    return dirty
+end
+
 
 -- ─── Minimap overlay (render_mode = "chart") ─────────────────────────────────
 --
@@ -304,6 +337,9 @@ script.on_event(defines.events.on_segmented_unit_died, function(e)
         }
     end
 
+    -- A death in territory X may free territories that were contested only because
+    -- X was occupied. Prune them immediately so the overlay updates at once.
+    prune_stale(unit.surface)
     refresh_overlay(unit.surface)
 end)
 
@@ -370,7 +406,10 @@ script.on_nth_tick(CHECK_INTERVAL, function()
     local chance        = migration_chance()
     local overlay_dirty = false
 
-    -- 0. Fallback scan: catch contested territories the died-event missed
+    -- 0. Drop stale overlay entries (territory re-occupied or no longer contested)
+    if prune_stale(surface) then overlay_dirty = true end
+
+    -- 0b. Fallback scan: catch contested territories the died-event missed
     --    (e.g. unit.territory was nil at event time, or stale storage after upgrade)
     for _, t in pairs(surface.get_territories()) do
         if not t.valid                                                    then goto next_scan end

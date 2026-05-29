@@ -1,6 +1,6 @@
 {
   "name": "demolisher-rework",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "title": "Demolisher Rework",
   "author": "Ervins",
   "description": "Overhauls demolisher repopulation on Vulcanus. Worm deaths trigger a three-phase cycle: a cooling grace period, a contested state with a yellow hazard-stripe minimap overlay, then migration where a neighbouring demolisher clones itself and walks to reclaim the territory. Players can intercept and kill the migrant to prevent recapture. Build-trigger enrage included. All timings, HP multipliers, and territory radius are fully configurable in Mod Settings.",
