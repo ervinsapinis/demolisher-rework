@@ -1,9 +1,9 @@
 {
   "name": "demolisher-rework",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "title": "Demolisher Rework",
   "author": "Ervins",
-  "description": "Smaller territories, three-phase repopulation (cooling/contested/migration), yellow minimap overlay, build-trigger enrage. Fully configurable.",
+  "description": "Overhauls demolisher repopulation on Vulcanus. Worm deaths trigger a three-phase cycle: a cooling grace period, a contested state with a yellow hazard-stripe minimap overlay, then migration where a neighbouring demolisher clones itself and walks to reclaim the territory. Players can intercept and kill the migrant to prevent recapture. Build-trigger enrage included. All timings, HP multipliers, and territory radius are fully configurable in Mod Settings.",
   "factorio_version": "2.0",
   "dependencies": ["space-age"]
 }
