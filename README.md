@@ -20,7 +20,7 @@ When a resident demolisher dies its territory does **not** repopulate instantly.
 
 1. **Cooling** — a grace period (default 5 min) during which nothing happens and no overlay appears. Gives players time to work in the area without immediately triggering a counter-attack.
 2. **Contested** — after the grace period the territory enters the queue and shows the yellow hazard-stripe minimap overlay.
-3. **Migration** — after a configurable delay a demolisher from a neighbouring occupied territory clones itself and walks toward the contested territory's centre. The overlay persists until it arrives. Players can intercept and kill the migrant to prevent recapture.
+3. **Migration** — after a configurable delay a demolisher from a neighbouring occupied territory clones itself and walks toward the contested territory's centre. The overlay persists until it arrives. Killing the migrant resets the delay and a new one will eventually be dispatched. To permanently stop recapture you must also eliminate the neighbouring occupied territories.
 
 ### Build trigger
 Placing any structure inside an occupied demolisher territory immediately enrages the resident demolisher.
