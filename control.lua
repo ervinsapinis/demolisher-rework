@@ -151,6 +151,17 @@ local function get_head_pos(unit)
     return (nodes and #nodes > 0) and nodes[1] or nil
 end
 
+-- LuaSegmentedUnit has no .name; the prototype carries it. pcall-guarded so an
+-- API difference degrades to "unknown unit" instead of a crash.
+local function unit_name(unit)
+    if not (unit and unit.valid) then return nil end
+    local ok, name = pcall(function() return unit.prototype.name end)
+    if ok and name then return name end
+    local ok2, name2 = pcall(function() return unit.name end)
+    if ok2 then return name2 end
+    return nil
+end
+
 local function dist(a, b)
     return math.sqrt((a.x - b.x)^2 + (a.y - b.y)^2)
 end
@@ -186,7 +197,7 @@ local function max_neighbor_rank(surface, territory)
     for _, n in pairs(get_neighbors(surface, territory)) do
         if is_occupied(n) then
             for _, u in pairs(n.get_segmented_units()) do
-                local r = u.valid and TIER_RANK[u.name] or 0
+                local r = TIER_RANK[unit_name(u) or ""] or 0
                 if r > max_rank then max_rank = r end
             end
         end
@@ -676,7 +687,8 @@ script.on_event(defines.events.on_segmented_unit_died, function(e)
     local surface = unit.surface
 
     -- The grudge is eternal (escalation counter; migrants count too)
-    if TIER_RANK[unit.name] then
+    local uname = unit_name(unit)
+    if uname and TIER_RANK[uname] then
         storage.kills = storage.kills + 1
 
         -- Field studies: first kill teaches ethology instantly
@@ -692,7 +704,7 @@ script.on_event(defines.events.on_segmented_unit_died, function(e)
         -- Head drop (skipped if the body is already gone and we have no position)
         local pos = get_head_pos(unit)
         if pos and math.random() < head_drop_chance() then
-            local size = unit.name:match("^(%a+)%-demolisher$")
+            local size = uname:match("^(%a+)%-demolisher$")
             local item = "dr-head-" .. size .. "-raw"
             local stack = {name = item, count = 1}
             local okq, q = pcall(function() return unit.quality end)
@@ -775,7 +787,7 @@ script.on_event(defines.events.on_entity_damaged, function(e)
     local ok, unit = pcall(function() return ent.segmented_unit end)
     if not ok then storage.esc_off = true; return end
     if not (unit and unit.valid) then return end
-    if not TIER_RANK[unit.name] then return end
+    if not TIER_RANK[unit_name(unit) or ""] then return end
 
     local p = ent.position
     local dist_km = math.sqrt(p.x * p.x + p.y * p.y) / 1000
