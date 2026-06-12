@@ -16,10 +16,12 @@ local WEIGHT = {           -- 1 rocket = 1,000,000 weight (1 t)
     big    = 1000 * 1000,  -- 1 per rocket: yes, a whole rocket for one head
 }
 
-local TINT = {
+-- Preservation is marked with a corner badge (vanilla style), not a colour cast:
+-- embalmed heads carry a bioflux badge, cryo heads an ice badge.
+local BADGE = {
     raw      = nil,
-    embalmed = {r = 0.70, g = 1.00, b = 0.70, a = 1.0},
-    cryo     = {r = 0.60, g = 0.85, b = 1.00, a = 1.0},
+    embalmed = "__space-age__/graphics/icons/bioflux.png",
+    cryo     = "__space-age__/graphics/icons/ice.png",
 }
 
 local ORDER_SIZE = {small = "a", medium = "b", big = "c"}
@@ -37,16 +39,23 @@ data:extend{{
 
 for _, size in pairs(SIZES) do
     for _, pres in pairs{"raw", "embalmed", "cryo"} do
-        local icon_def = {
+        local icons = {{
             icon      = "__space-age__/graphics/icons/" .. size .. "-demolisher-remains.png",
             icon_size = 64,
-        }
-        if TINT[pres] then icon_def.tint = TINT[pres] end
+        }}
+        if BADGE[pres] then
+            icons[2] = {
+                icon      = BADGE[pres],
+                icon_size = 64,
+                scale     = 0.25,
+                shift     = {8, 8},   -- bottom-right corner badge
+            }
+        end
 
         local item = {
             type       = "item",
             name       = "dr-head-" .. size .. "-" .. pres,
-            icons      = {icon_def},
+            icons      = icons,
             subgroup   = "dr-heads",
             order      = ORDER_SIZE[size] .. "-" .. ORDER_PRES[pres],
             stack_size = 1,
