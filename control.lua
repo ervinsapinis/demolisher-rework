@@ -32,8 +32,13 @@ local EFFIGY_TINT    = {r = 0.720, g = 0.450, b = 1.000, a = 1.0}  -- violet (yo
 local BORDER_WIDTH   = 64
 
 local TIER_RANK = {["small-demolisher"] = 1, ["medium-demolisher"] = 2, ["big-demolisher"] = 3}
-local SIZE_RANK = {small = 1, medium = 2, big = 3}
-local PRES_RANK = {raw = 1, embalmed = 2, cryo = 3}
+
+-- The diagonal: one building per tier, one mountable head per building.
+local EFFIGY_TIER    = {["dr-effigy-small"] = 1, ["dr-effigy-medium"] = 2, ["dr-effigy-big"] = 3}
+local MOUNT_ITEM     = {"dr-head-small-raw", "dr-head-medium-embalmed", "dr-head-big-cryo"}
+local MOUNTED_SPRITE = {"dr-effigy-small-mounted", "dr-effigy-medium-mounted", "dr-effigy-big-mounted"}
+local TEXT_OFFSET    = {-2.4, -3.0, -4.8}   -- floating label height per tier
+local TEXT_SCALE     = {1.4, 1.6, 2.0}
 
 local STATUS_COLOR = {
     active     = nil,                              -- no floating text when healthy
@@ -48,7 +53,7 @@ local STATUS_TEXT = {
     silent     = "SILENT",
     starving   = "STARVING",
     unpowered  = "NO POWER",
-    undersized = "HEAD TOO SMALL",
+    undersized = "EFFIGY TOO SMALL",
     ["no-head"] = "NO HEAD",
     exposed    = "EXPOSED",
 }
@@ -112,17 +117,22 @@ local function rescan_entities()
     for _, ent in pairs(surface.find_entities_filtered{name = "dr-seismograph"}) do
         storage.seismographs[ent.unit_number] = ent
     end
-    for _, ent in pairs(surface.find_entities_filtered{name = "dr-effigy"}) do
-        storage.effigies[ent.unit_number] = {
-            entity = ent, feed_acc = 0, suppressing = false, status = "new",
-        }
-        pcall(function()
-            local inv = ent.get_inventory(defines.inventory.chest)
-            if inv then
-                inv.set_filter(2, "calcite")
-                inv.set_filter(3, "tungsten-plate")
-            end
-        end)
+    for name, tier in pairs(EFFIGY_TIER) do
+        for _, ent in pairs(surface.find_entities_filtered{name = name}) do
+            storage.effigies[ent.unit_number] = {
+                entity = ent, tier = tier, feed_acc = 0, suppressing = false, status = "new",
+            }
+            pcall(function()
+                local inv = ent.get_inventory(defines.inventory.chest)
+                if inv then
+                    inv.set_filter(1, MOUNT_ITEM[tier])
+                    if tier == 2 then
+                        inv.set_filter(2, "calcite")
+                        inv.set_filter(3, "tungsten-plate")
+                    end
+                end
+            end)
+        end
     end
     -- Orphaned power interfaces (their effigy regs were just wiped): recreated
     -- on demand by the heartbeat, so clear them all.
@@ -260,34 +270,6 @@ end
 
 -- --- Effigy state machine ---------------------------------------------------------
 
--- Parse "dr-head-<size>-<pres>"; returns size_rank, pres or nil.
-local function parse_head(name)
-    local size, pres = name:match("^dr%-head%-(%a+)%-(%a+)$")
-    if size and SIZE_RANK[size] and PRES_RANK[pres] then
-        return SIZE_RANK[size], pres
-    end
-    return nil
-end
-
--- Best head in the effigy inventory: largest size, then best preservation.
-local function find_best_head(inv)
-    local best
-    for i = 1, #inv do
-        local stack = inv[i]
-        if stack.valid_for_read then
-            local size_rank, pres = parse_head(stack.name)
-            if size_rank then
-                if not best
-                or size_rank > best.size_rank
-                or (size_rank == best.size_rank and PRES_RANK[pres] > PRES_RANK[best.pres]) then
-                    best = {size_rank = size_rank, pres = pres}
-                end
-            end
-        end
-    end
-    return best
-end
-
 local function set_status_text(reg, status)
     local label = STATUS_TEXT[status]
     if not label then
@@ -302,22 +284,26 @@ local function set_status_text(reg, status)
         reg.text = rendering.draw_text{
             text      = label,
             surface   = reg.entity.surface,
-            target    = {entity = reg.entity, offset = {0, -2.8}},
+            target    = {entity = reg.entity, offset = {0, TEXT_OFFSET[reg.tier] or -2.8}},
             color     = STATUS_COLOR[status],
-            scale     = 1.6,
+            scale     = TEXT_SCALE[reg.tier] or 1.6,
             alignment = "center",
         }
     end
 end
 
--- Slot layout: 1 = head (any), 2 = calcite, 3 = tungsten plate.
--- Filters keep inserters honest; pcall-guarded against filter API drift.
-local function setup_effigy_inventory(ent)
+-- Native slot filters enforce the diagonal physically: the wrong head will
+-- not go into the slot, same mechanism that keeps coal out of a lab.
+-- Slot 1 = the tier's mountable head; medium adds 2 = calcite, 3 = tungsten.
+local function setup_effigy_inventory(ent, tier)
     local inv = ent.get_inventory(defines.inventory.chest)
     if not inv then return end
     pcall(function()
-        inv.set_filter(2, "calcite")
-        inv.set_filter(3, "tungsten-plate")
+        inv.set_filter(1, MOUNT_ITEM[tier])
+        if tier == 2 then
+            inv.set_filter(2, "calcite")
+            inv.set_filter(3, "tungsten-plate")
+        end
     end)
 end
 
@@ -355,6 +341,7 @@ end
 local function destroy_effigy_reg(reg)
     if reg.eei and reg.eei.valid then reg.eei.destroy() end
     if reg.text and reg.text.valid then reg.text.destroy() end
+    if reg.overlay and reg.overlay.valid then reg.overlay.destroy() end
 end
 
 -- Per-heartbeat update of one effigy. Returns true if overlay state changed.
@@ -370,17 +357,22 @@ local function update_effigy(surface, un, reg, tick)
 
     reg.territory = territory_of_position(surface, ent.position)
 
-    local inv  = ent.get_inventory(defines.inventory.chest)
-    local best = inv and find_best_head(inv)
+    local tier = reg.tier or EFFIGY_TIER[ent.name] or 1
+    reg.tier = tier
+
+    local inv      = ent.get_inventory(defines.inventory.chest)
+    local has_head = inv and inv.get_item_count(MOUNT_ITEM[tier]) > 0
 
     local audience_rank = reg.territory and max_neighbor_rank(surface, reg.territory) or 0
 
-    -- Upkeep per preservation tier
+    -- Upkeep per tier: 1 = raw head, rot handled by native spoilage;
+    -- 2 = embalmed, eats calcite + tungsten while there is an audience;
+    -- 3 = cryo, constant power via the hidden interface.
     local upkeep_ok, fail_status = false, "no-head"
-    if best then
-        if best.pres == "raw" then
-            upkeep_ok = true   -- spoilage handles rot natively
-        elseif best.pres == "embalmed" then
+    if has_head then
+        if tier == 1 then
+            upkeep_ok = true
+        elseif tier == 2 then
             if audience_rank == 0 then
                 upkeep_ok = true   -- nobody listening, nothing consumed
             else
@@ -398,7 +390,7 @@ local function update_effigy(surface, un, reg, tick)
                     fail_status = "starving"
                 end
             end
-        elseif best.pres == "cryo" then
+        elseif tier == 3 then
             if not (reg.eei and reg.eei.valid) then
                 reg.eei = surface.create_entity{
                     name = "dr-effigy-power", position = ent.position, force = ent.force,
@@ -420,19 +412,34 @@ local function update_effigy(surface, un, reg, tick)
         end
     end
 
-    -- Cryo interface cleanup when no cryo head is socketed
-    if (not best or best.pres ~= "cryo") and reg.eei and reg.eei.valid then
+    -- Power interface only exists while a head is socketed in a big effigy
+    if (tier ~= 3 or not has_head) and reg.eei and reg.eei.valid then
         reg.eei.destroy()
         reg.eei = nil
+    end
+
+    -- Mounted-state visual: overlay sprite while a head is socketed
+    if has_head then
+        if not (reg.overlay and reg.overlay.valid) then
+            reg.overlay = rendering.draw_sprite{
+                sprite       = MOUNTED_SPRITE[tier],
+                target       = ent,
+                surface      = surface,
+                render_layer = "object",
+            }
+        end
+    elseif reg.overlay and reg.overlay.valid then
+        reg.overlay.destroy()
+        reg.overlay = nil
     end
 
     local was_suppressing = reg.suppressing
     local old_status      = reg.status
     local new_status
 
-    if best and upkeep_ok then
+    if has_head and upkeep_ok then
         reg.silence_until = nil
-        if best.size_rank >= audience_rank then
+        if tier >= audience_rank then
             reg.suppressing = true
             new_status = "active"
         else
@@ -443,7 +450,7 @@ local function update_effigy(surface, un, reg, tick)
             new_status = "undersized"
             if old_status ~= "undersized" then
                 game.print(string.format(
-                    "[color=red][Effigy][/color] A larger demolisher is not fooled by the head at [gps=%d,%d,%s].",
+                    "[color=red][Effigy][/color] A larger demolisher is not fooled by the effigy at [gps=%d,%d,%s].",
                     math.floor(ent.position.x), math.floor(ent.position.y), SURFACE_NAME))
             end
         end
@@ -466,12 +473,15 @@ local function update_effigy(surface, un, reg, tick)
     reg.status = new_status
     set_status_text(reg, new_status)
 
-    -- One-time warnings on degradation while still suppressing
+    -- One-time warning on degradation while still suppressing
     if new_status == "silent" and old_status ~= "silent" then
+        local cause = "head lost"
+        if has_head then
+            cause = (fail_status == "starving") and "starving" or "no power"
+        end
         game.print(string.format(
             "[color=orange][Effigy][/color] Effigy at [gps=%d,%d,%s] has gone silent (%s). The neighbours will notice.",
-            math.floor(ent.position.x), math.floor(ent.position.y), SURFACE_NAME,
-            best and (fail_status == "starving" and "starving" or "no power") or "head lost"))
+            math.floor(ent.position.x), math.floor(ent.position.y), SURFACE_NAME, cause))
     end
 
     return reg.suppressing ~= was_suppressing
@@ -833,11 +843,12 @@ local function register_built(ent)
     if ent.name == "dr-seismograph" then
         storage.seismographs[ent.unit_number] = ent
         storage.coverage_sig = ""   -- force overlay refresh next heartbeat
-    elseif ent.name == "dr-effigy" then
+    elseif EFFIGY_TIER[ent.name] then
+        local tier = EFFIGY_TIER[ent.name]
         storage.effigies[ent.unit_number] = {
-            entity = ent, feed_acc = 0, suppressing = false, status = "new",
+            entity = ent, tier = tier, feed_acc = 0, suppressing = false, status = "new",
         }
-        setup_effigy_inventory(ent)
+        setup_effigy_inventory(ent, tier)
     end
 end
 
@@ -865,7 +876,9 @@ script.on_event(defines.events.on_built_entity, function(e)
 end)
 
 local built_filter = {{filter = "name", name = "dr-seismograph"},
-                      {filter = "name", name = "dr-effigy"}}
+                      {filter = "name", name = "dr-effigy-small"},
+                      {filter = "name", name = "dr-effigy-medium"},
+                      {filter = "name", name = "dr-effigy-big"}}
 
 script.on_event(defines.events.on_robot_built_entity, function(e)
     if e.entity.surface.name ~= SURFACE_NAME then return end
@@ -890,7 +903,7 @@ local function register_removed(ent)
     if ent.name == "dr-seismograph" then
         storage.seismographs[ent.unit_number] = nil
         storage.coverage_sig = ""
-    elseif ent.name == "dr-effigy" then
+    elseif EFFIGY_TIER[ent.name] then
         local reg = storage.effigies[ent.unit_number]
         if reg then
             if reg.suppressing then
@@ -1122,8 +1135,8 @@ commands.add_command("dr-status", "Demolisher Rework: show current territory sta
         n = n + 1
         local ent = reg.entity
         if ent and ent.valid then
-            p.print(string.format("  effigy[%d]  status=%s  suppressing=%s  [gps=%d,%d,%s]",
-                n, reg.status or "?", tostring(reg.suppressing),
+            p.print(string.format("  effigy[%d]  tier=%d  status=%s  suppressing=%s  [gps=%d,%d,%s]",
+                n, reg.tier or 0, reg.status or "?", tostring(reg.suppressing),
                 math.floor(ent.position.x), math.floor(ent.position.y), SURFACE_NAME))
         end
     end

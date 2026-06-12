@@ -1,34 +1,19 @@
--- Head items (3 sizes x 3 preservation tiers) + building items.
+-- The diagonal head ladder (5 items) + building items.
 --
--- Raw heads use the NATIVE spoilage mechanic: they rot into spoilage after
--- dr-raw-rot-hours, whether in your inventory, a chest, or a socketed effigy.
--- Quality extends spoil time natively, so heads from high-quality worms last
--- longer. Embalmed and cryo heads do not spoil.
+-- Each head size has exactly one valid preservation:
+--   small  -> mountable raw, spoils, cannot be preserved (drying ruins it)
+--   medium -> must be embalmed (Gleba); raw form is a crafting material that spoils
+--   big    -> must be cryo-preserved (Aquilo, with bioflux pre-treatment);
+--             raw form is a crafting material that spoils
 --
--- Icons are placeholders composed from Space Age demolisher corpse icons with
--- preservation tints (embalmed = green, cryo = ice blue).
-
-local SIZES = {"small", "medium", "big"}
-
-local WEIGHT = {           -- 1 rocket = 1,000,000 weight (1 t)
-    small  = 200 * 1000,   -- 5 per rocket
-    medium = 500 * 1000,   -- 2 per rocket
-    big    = 1000 * 1000,  -- 1 per rocket: yes, a whole rocket for one head
-}
-
--- Preservation is marked with a corner badge (vanilla style), not a colour cast:
--- embalmed heads carry a bioflux badge, cryo heads an ice badge.
-local BADGE = {
-    raw      = nil,
-    embalmed = "__space-age__/graphics/icons/bioflux.png",
-    cryo     = "__space-age__/graphics/icons/ice.png",
-}
-
-local ORDER_SIZE = {small = "a", medium = "b", big = "c"}
-local ORDER_PRES = {raw = "a", embalmed = "b", cryo = "c"}
+-- Raw heads use NATIVE spoilage: they rot in your pocket, in chests, anywhere.
+-- Quality extends spoil time. Embalmed and cryo heads are stable.
 
 local raw_spoil_ticks = math.floor(
     settings.startup["dr-raw-rot-hours"].value * 60 * 60 * 60)
+
+local DEMOLISHER_ICON = "__space-age__/graphics/icons/%s-demolisher.png"
+local DEAD_TINT       = {r = 0.50, g = 0.46, b = 0.50, a = 1.0}
 
 data:extend{{
     type  = "item-subgroup",
@@ -37,69 +22,65 @@ data:extend{{
     order = "zz-dr",
 }}
 
-for _, size in pairs(SIZES) do
-    for _, pres in pairs{"raw", "embalmed", "cryo"} do
-        -- The live demolisher icon is a front-on head with mandibles; a dark
-        -- "dead" tint turns it into a severed head better than the rubble icon.
-        local icons = {{
-            icon      = "__space-age__/graphics/icons/" .. size .. "-demolisher.png",
-            icon_size = 64,
-            tint      = {r = 0.50, g = 0.46, b = 0.50, a = 1.0},
-        }}
-        if BADGE[pres] then
-            icons[2] = {
-                icon      = BADGE[pres],
-                icon_size = 64,
-                scale     = 0.25,
-                shift     = {8, 8},   -- bottom-right corner badge
-            }
-        end
-
-        local item = {
-            type       = "item",
-            name       = "dr-head-" .. size .. "-" .. pres,
-            icons      = icons,
-            subgroup   = "dr-heads",
-            order      = ORDER_SIZE[size] .. "-" .. ORDER_PRES[pres],
-            stack_size = 1,
-            weight     = WEIGHT[size],
-        }
-
-        if pres == "raw" then
-            item.spoil_ticks  = raw_spoil_ticks
-            item.spoil_result = "spoilage"
-        end
-
-        data:extend{item}
+local function head_icons(size, badge)
+    local icons = {{
+        icon      = string.format(DEMOLISHER_ICON, size),
+        icon_size = 64,
+        tint      = DEAD_TINT,
+    }}
+    if badge then
+        icons[2] = {icon = badge, icon_size = 64, scale = 0.25, shift = {8, 8}}
     end
+    return icons
+end
+
+local heads = {
+    {name = "dr-head-small-raw",       size = "small",  badge = nil,
+     order = "a-a", weight = 200 * 1000,  spoils = true},
+    {name = "dr-head-medium-raw",      size = "medium", badge = nil,
+     order = "b-a", weight = 500 * 1000,  spoils = true},
+    {name = "dr-head-medium-embalmed", size = "medium",
+     badge = "__space-age__/graphics/icons/bioflux.png",
+     order = "b-b", weight = 500 * 1000,  spoils = false},
+    {name = "dr-head-big-raw",         size = "big",    badge = nil,
+     order = "c-a", weight = 1000 * 1000, spoils = true},
+    {name = "dr-head-big-cryo",        size = "big",
+     badge = "__space-age__/graphics/icons/ice.png",
+     order = "c-b", weight = 1000 * 1000, spoils = false},
+}
+
+for _, h in pairs(heads) do
+    local item = {
+        type       = "item",
+        name       = h.name,
+        icons      = head_icons(h.size, h.badge),
+        subgroup   = "dr-heads",
+        order      = h.order,
+        stack_size = 1,
+        weight     = h.weight,
+    }
+    if h.spoils then
+        item.spoil_ticks  = raw_spoil_ticks
+        item.spoil_result = "spoilage"
+    end
+    data:extend{item}
 end
 
 -- Building items
-data:extend{
-    {
-        type         = "item",
-        name         = "dr-seismograph",
-        icons        = {{
-            icon      = "__base__/graphics/icons/radar.png",
-            icon_size = 64,
-            tint      = {r = 1.0, g = 0.78, b = 0.50, a = 1.0},
-        }},
-        subgroup     = "defensive-structure",
-        order        = "d[radar]-b[dr-seismograph]",
-        place_result = "dr-seismograph",
-        stack_size   = 10,
-    },
-    {
-        type         = "item",
-        name         = "dr-effigy",
-        icons        = {{
-            icon      = "__base__/graphics/icons/steel-chest.png",
-            icon_size = 64,
-            tint      = {r = 0.80, g = 0.55, b = 0.95, a = 1.0},
-        }},
-        subgroup     = "defensive-structure",
-        order        = "d[radar]-c[dr-effigy]",
-        place_result = "dr-effigy",
-        stack_size   = 10,
-    },
+local buildings = {
+    {name = "dr-seismograph",  order = "d[radar]-b"},
+    {name = "dr-effigy-small", order = "d[radar]-c"},
+    {name = "dr-effigy-medium", order = "d[radar]-d"},
+    {name = "dr-effigy-big",   order = "d[radar]-e"},
 }
+for _, b in pairs(buildings) do
+    data:extend{{
+        type         = "item",
+        name         = b.name,
+        icons        = {{icon = "__demolisher-rework__/graphics/icons/" .. b.name .. ".png", icon_size = 64}},
+        subgroup     = "defensive-structure",
+        order        = b.order,
+        place_result = b.name,
+        stack_size   = 10,
+    }}
+end

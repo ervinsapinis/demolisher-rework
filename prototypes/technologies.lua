@@ -49,7 +49,7 @@ data:extend{
             time = 30,
         },
         effects = {
-            {type = "unlock-recipe", recipe = "dr-effigy"},
+            {type = "unlock-recipe", recipe = "dr-effigy-small"},
         },
     },
     {
@@ -72,9 +72,8 @@ data:extend{
             time = 30,
         },
         effects = {
-            {type = "unlock-recipe", recipe = "dr-head-small-embalmed"},
+            {type = "unlock-recipe", recipe = "dr-effigy-medium"},
             {type = "unlock-recipe", recipe = "dr-head-medium-embalmed"},
-            {type = "unlock-recipe", recipe = "dr-head-big-embalmed"},
         },
     },
     {
@@ -97,8 +96,7 @@ data:extend{
             time = 45,
         },
         effects = {
-            {type = "unlock-recipe", recipe = "dr-head-small-cryo"},
-            {type = "unlock-recipe", recipe = "dr-head-medium-cryo"},
+            {type = "unlock-recipe", recipe = "dr-effigy-big"},
             {type = "unlock-recipe", recipe = "dr-head-big-cryo"},
         },
     },

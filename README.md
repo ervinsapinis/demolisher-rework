@@ -28,23 +28,23 @@ When a resident demolisher dies the territory does not repopulate instantly:
 2. **Contested**: the territory enters the migration queue, yellow stripes appear (within coverage).
 3. **Migration**: a worm from a neighbouring occupied territory clones itself and walks over to claim it. Killing the migrant resets the delay; a new one will eventually come. To stop recapture permanently, clear the neighbours, or lie to them.
 
-## The effigy: lie to the worms
+## The effigies: lie to the worms
 
-Killed demolishers have a chance to drop their **head** (default 75%). Research **Demolisher ethology** (granted instantly on your first kill) to unlock the **territorial effigy**: socket a head and neighbouring demolishers believe the territory is occupied. No contested state, no migration, while the deception holds.
+Killed demolishers have a chance to drop their **head** (default 75%). Each head size has exactly one valid preservation and one altar — the diagonal is physical, enforced by slot filters:
 
-**The tier rule:** a head only fools demolishers of its own size or smaller. A small head does nothing against a big neighbour. Want peace next to a big demolisher? Go kill a big demolisher first.
+| Building | Footprint | Mounts | Fools | Upkeep | Fails when |
+|---|---|---|---|---|---|
+| Small effigy (3x3) | Ethology tech | Raw small head | Small worms | None, the head just **rots** (native spoilage; quality extends it) | Timer runs out |
+| Medium effigy (4x4) | Cadaver embalming (Gleba) | Embalmed medium head (raw + bioflux) | Small + medium | Eats calcite + tungsten plate while there's an audience | Feed runs dry |
+| Grand effigy (6x6) | Cryogenic taxidermy (Aquilo) | Cryo big head (raw + bioflux + lithium + fluoroketone) | Everything | Constant power (default 10 MW) | The lights go out |
 
-**The preservation ladder** (each tier swaps the upkeep currency):
+Off the diagonal, nothing works: small heads can't be preserved (drying ruins them), medium and big heads fall apart if mounted raw. Raw heads of every size spoil, so a trophy hunted before you have the tech is on a clock — ship it or lose it.
 
-| Head | Tech | Upkeep | Fails when |
-|---|---|---|---|
-| Raw | drop | None, but it **rots** (native spoilage, default 2 h; quality extends it) | The timer runs out |
-| Embalmed | Cadaver embalming (Gleba) | Eats calcite + tungsten plate while there is an audience | The feed runs dry |
-| Cryo-preserved | Cryogenic taxidermy (Aquilo) | Constant power (default 10 MW), zero items | The lights go out |
+**Demolisher ethology** becomes researchable only after your first demolisher kill: you cannot study what you have not dissected.
 
 When upkeep fails, a **silence window** (default 5 min) starts: refill, re-socket, or restore power in time and nobody notices. If the window expires, the deception is **exposed**: the territory is queued for migration at a reduced delay (default 50%). The neighbours noticed the silence, and they're coming sooner.
 
-Effigies are containers: inserters can load heads and feed automatically. A floating status label warns of SILENT / STARVING / NO POWER / HEAD TOO SMALL states.
+Effigies are containers: inserters can load heads and feed automatically. The monument visually transforms when a head is mounted, and a floating status label warns of SILENT / STARVING / NO POWER / EFFIGY TOO SMALL states.
 
 ## Escalation: they remember
 
@@ -80,4 +80,4 @@ For testing and troubleshooting only.
 
 Modifies the three demolisher segmented-unit prototypes (`territory_radius`, `enraged_duration`, `max_health`) and, when the hardcore-intel setting is on, sets the chart `default_enemy_territory_color` to transparent. Compatible with anything that doesn't fight over those.
 
-Graphics are placeholder tints of vanilla sprites for now (radar, steel chest, demolisher icons).
+Entity graphics are AI-generated in the Factorio projection (img2img from vanilla sprite references); head item icons reuse tinted vanilla demolisher icons.
