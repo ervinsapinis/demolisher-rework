@@ -34,13 +34,17 @@ data:extend{
             icon      = "__space-age__/graphics/icons/small-demolisher.png",
             icon_size = 64,
         }},
-        prerequisites = {"chemical-science-pack"},
+        -- Hidden until the force kills its first demolisher (control.lua
+        -- enables it): you cannot study what you have not dissected.
+        enabled = false,
+        prerequisites = {"metallurgic-science-pack"},
         unit = {
             count = 200,
             ingredients = {
-                {"automation-science-pack", 1},
-                {"logistic-science-pack",   1},
-                {"chemical-science-pack",   1},
+                {"automation-science-pack",  1},
+                {"logistic-science-pack",    1},
+                {"chemical-science-pack",    1},
+                {"metallurgic-science-pack", 1},
             },
             time = 30,
         },

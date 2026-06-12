@@ -116,6 +116,13 @@ local function rescan_entities()
         storage.effigies[ent.unit_number] = {
             entity = ent, feed_acc = 0, suppressing = false, status = "new",
         }
+        pcall(function()
+            local inv = ent.get_inventory(defines.inventory.chest)
+            if inv then
+                inv.set_filter(2, "calcite")
+                inv.set_filter(3, "tungsten-plate")
+            end
+        end)
     end
     -- Orphaned power interfaces (their effigy regs were just wiped): recreated
     -- on demand by the heartbeat, so clear them all.
@@ -295,12 +302,23 @@ local function set_status_text(reg, status)
         reg.text = rendering.draw_text{
             text      = label,
             surface   = reg.entity.surface,
-            target    = {entity = reg.entity, offset = {0, -1.8}},
+            target    = {entity = reg.entity, offset = {0, -2.8}},
             color     = STATUS_COLOR[status],
-            scale     = 1.4,
+            scale     = 1.6,
             alignment = "center",
         }
     end
+end
+
+-- Slot layout: 1 = head (any), 2 = calcite, 3 = tungsten plate.
+-- Filters keep inserters honest; pcall-guarded against filter API drift.
+local function setup_effigy_inventory(ent)
+    local inv = ent.get_inventory(defines.inventory.chest)
+    if not inv then return end
+    pcall(function()
+        inv.set_filter(2, "calcite")
+        inv.set_filter(3, "tungsten-plate")
+    end)
 end
 
 -- The deception collapsed with witnesses present: queue the territory at a
@@ -503,6 +521,17 @@ local function make_covered_fn(seismos)
     end
 end
 
+-- Territory-granularity detection: a seismograph hears the WORM, and the worm
+-- patrols its whole territory, so hearing any part of it reveals the full
+-- shape, even into uncharted darkness. The seismograph is a creature sense,
+-- not a second radar.
+local function territory_covered(territory, covered)
+    for _, chunk in pairs(territory.get_chunks()) do
+        if covered(chunk.x, chunk.y) then return true end
+    end
+    return false
+end
+
 
 -- --- Stale-entry pruning ------------------------------------------------------------
 
@@ -554,16 +583,16 @@ function refresh_overlay(surface)
     end
     storage.contested_renders = {}
 
-    local player_force = game.forces["player"]
-    if not player_force then return end
-
     local seismos = active_seismographs()
     local covered = make_covered_fn(seismos)
 
     -- Classify territories. Violet wins over yellow; occupied can't be either.
+    -- Coverage is per-TERRITORY: hearing any part of a worm's patrol reveals
+    -- the whole shape, charted or not. No charting requirement: seismic data
+    -- does not need eyes.
     local entries, seen = {}, {}   -- entries: {territory, class}
     local function add(t, class)
-        if t and t.valid and not seen[t] then
+        if t and t.valid and not seen[t] and territory_covered(t, covered) then
             seen[t] = true
             entries[#entries + 1] = {territory = t, class = class}
         end
@@ -588,14 +617,13 @@ function refresh_overlay(surface)
 
     if #entries == 0 then return end
 
-    -- chunk -> entry index, for border edge detection (yellow/violet only)
+    -- chunk -> entry index, for border edge detection (all classes: red
+    -- territories get borders too, so adjacent worms read as separate)
     local cs = {}
     for ei, entry in ipairs(entries) do
-        if entry.class ~= "occupied" then
-            for _, chunk in pairs(entry.territory.get_chunks()) do
-                if not cs[chunk.x] then cs[chunk.x] = {} end
-                cs[chunk.x][chunk.y] = ei
-            end
+        for _, chunk in pairs(entry.territory.get_chunks()) do
+            if not cs[chunk.x] then cs[chunk.x] = {} end
+            cs[chunk.x][chunk.y] = ei
         end
     end
 
@@ -604,17 +632,13 @@ function refresh_overlay(surface)
         local tint = (entry.class == "occupied" and OCCUPIED_TINT)
                   or (entry.class == "effigy"   and EFFIGY_TINT)
                   or CONTESTED_TINT
-        local with_borders = entry.class ~= "occupied"
 
         for _, chunk in pairs(entry.territory.get_chunks()) do
             local cx, cy = chunk.x, chunk.y
-            if not player_force.is_chunk_charted(surface, chunk) then goto continue_chunk end
-            if not covered(cx, cy) then goto continue_chunk end
-
             local lt = chunk.area.left_top
             local rb = chunk.area.right_bottom
 
-            if with_borders and FILL_COLOR.a > 0 then
+            if FILL_COLOR.a > 0 then
                 renders[#renders + 1] = rendering.draw_rectangle{
                     color = FILL_COLOR, filled = true,
                     left_top = lt, right_bottom = rb,
@@ -633,43 +657,39 @@ function refresh_overlay(surface)
                 render_mode = "chart",
             }
 
-            if with_borders then
-                local w = 0.25
-                local function edge(nx, ny)
-                    local nei = cs[nx] and cs[nx][ny]
-                    return not nei or nei ~= ei
-                end
-                if edge(cx, cy - 1) then
-                    renders[#renders + 1] = rendering.draw_line{
-                        color = tint, width = BORDER_WIDTH,
-                        from = {lt.x - w, lt.y}, to = {rb.x + w, lt.y},
-                        surface = surface, render_mode = "chart",
-                    }
-                end
-                if edge(cx, cy + 1) then
-                    renders[#renders + 1] = rendering.draw_line{
-                        color = tint, width = BORDER_WIDTH,
-                        from = {lt.x - w, rb.y}, to = {rb.x + w, rb.y},
-                        surface = surface, render_mode = "chart",
-                    }
-                end
-                if edge(cx - 1, cy) then
-                    renders[#renders + 1] = rendering.draw_line{
-                        color = tint, width = BORDER_WIDTH,
-                        from = {lt.x, lt.y - w}, to = {lt.x, rb.y + w},
-                        surface = surface, render_mode = "chart",
-                    }
-                end
-                if edge(cx + 1, cy) then
-                    renders[#renders + 1] = rendering.draw_line{
-                        color = tint, width = BORDER_WIDTH,
-                        from = {rb.x, lt.y - w}, to = {rb.x, rb.y + w},
-                        surface = surface, render_mode = "chart",
-                    }
-                end
+            local w = 0.25
+            local function edge(nx, ny)
+                local nei = cs[nx] and cs[nx][ny]
+                return not nei or nei ~= ei
             end
-
-            ::continue_chunk::
+            if edge(cx, cy - 1) then
+                renders[#renders + 1] = rendering.draw_line{
+                    color = tint, width = BORDER_WIDTH,
+                    from = {lt.x - w, lt.y}, to = {rb.x + w, lt.y},
+                    surface = surface, render_mode = "chart",
+                }
+            end
+            if edge(cx, cy + 1) then
+                renders[#renders + 1] = rendering.draw_line{
+                    color = tint, width = BORDER_WIDTH,
+                    from = {lt.x - w, rb.y}, to = {rb.x + w, rb.y},
+                    surface = surface, render_mode = "chart",
+                }
+            end
+            if edge(cx - 1, cy) then
+                renders[#renders + 1] = rendering.draw_line{
+                    color = tint, width = BORDER_WIDTH,
+                    from = {lt.x, lt.y - w}, to = {lt.x, rb.y + w},
+                    surface = surface, render_mode = "chart",
+                }
+            end
+            if edge(cx + 1, cy) then
+                renders[#renders + 1] = rendering.draw_line{
+                    color = tint, width = BORDER_WIDTH,
+                    from = {rb.x, lt.y - w}, to = {rb.x, rb.y + w},
+                    surface = surface, render_mode = "chart",
+                }
+            end
         end
     end
 end
@@ -691,13 +711,14 @@ script.on_event(defines.events.on_segmented_unit_died, function(e)
     if uname and TIER_RANK[uname] then
         storage.kills = storage.kills + 1
 
-        -- Field studies: first kill teaches ethology instantly
+        -- Field studies: the first kill makes ethology RESEARCHABLE.
+        -- You cannot study what you have not dissected.
         local force = game.forces["player"]
         if force then
             local tech = force.technologies["dr-demolisher-ethology"]
-            if tech and not tech.researched then
-                tech.researched = true
-                game.print("[color=yellow][Demolisher Rework][/color] Standing over the corpse, you have an idea. (Demolisher ethology unlocked)")
+            if tech and not tech.enabled and not tech.researched then
+                tech.enabled = true
+                game.print("[color=yellow][Demolisher Rework][/color] Field observations recorded. Demolisher ethology is now available for research.")
             end
         end
 
@@ -816,6 +837,7 @@ local function register_built(ent)
         storage.effigies[ent.unit_number] = {
             entity = ent, feed_acc = 0, suppressing = false, status = "new",
         }
+        setup_effigy_inventory(ent)
     end
 end
 

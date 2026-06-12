@@ -46,14 +46,15 @@ effigy.icons     = {{
 }}
 effigy.minable        = {mining_time = 0.5, result = "dr-effigy"}
 effigy.max_health     = 600
-effigy.inventory_size = 6
+-- 3 slots: one head, one calcite, one tungsten plate (filters set by script)
+effigy.inventory_size = 3
 effigy.inventory_type = "with_filters_and_bar"
--- 2x2 footprint for presence (placeholder graphics scaled up)
-effigy.collision_box  = {{-0.85, -0.85}, {0.85, 0.85}}
-effigy.selection_box  = {{-1.0, -1.0}, {1.0, 1.0}}
+-- 4x4 footprint: this is a monument, not a chest
+effigy.collision_box  = {{-1.85, -1.85}, {1.85, 1.85}}
+effigy.selection_box  = {{-2.0, -2.0}, {2.0, 2.0}}
 if effigy.picture and effigy.picture.layers then
     for i, layer in pairs(effigy.picture.layers) do
-        layer.scale = (layer.scale or 1) * 2
+        layer.scale = (layer.scale or 1) * 4
         if i == 1 then
             layer.tint = {r = 0.75, g = 0.50, b = 0.90, a = 1.0}
         end

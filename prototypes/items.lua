@@ -39,9 +39,12 @@ data:extend{{
 
 for _, size in pairs(SIZES) do
     for _, pres in pairs{"raw", "embalmed", "cryo"} do
+        -- The live demolisher icon is a front-on head with mandibles; a dark
+        -- "dead" tint turns it into a severed head better than the rubble icon.
         local icons = {{
-            icon      = "__space-age__/graphics/icons/" .. size .. "-demolisher-remains.png",
+            icon      = "__space-age__/graphics/icons/" .. size .. "-demolisher.png",
             icon_size = 64,
+            tint      = {r = 0.50, g = 0.46, b = 0.50, a = 1.0},
         }}
         if BADGE[pres] then
             icons[2] = {
