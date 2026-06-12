@@ -1,9 +1,9 @@
 {
   "name": "demolisher-rework",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "title": "Demolisher Rework",
   "author": "Ervins",
-  "description": "Overhauls demolisher repopulation on Vulcanus. Worm deaths trigger a three-phase cycle: a cooling grace period, a contested state with a yellow hazard-stripe minimap overlay, then migration where a neighbouring demolisher clones itself and walks to reclaim the territory. Killing the migrant resets the delay and a new one will be dispatched — to permanently stop recapture you must also clear the neighbouring occupied territories. Build-trigger enrage included. All timings, HP multipliers, and territory radius are fully configurable in Mod Settings.",
+  "description": "Overhauls demolishers on Vulcanus. Three-phase repopulation: cooling, contested, then a neighbouring worm migrates in to reclaim. Territory intel is earned, not given: the map shows nothing until seismograph stations listen for the worms. Killed demolishers drop their heads; socket one into a territorial effigy and the neighbours believe the territory is occupied. Raw heads rot, Gleba embalming wants feeding, Aquilo cryonics want power. Demolishers grow tougher with distance and with every kill. Fully configurable.",
   "factorio_version": "2.0",
   "dependencies": ["space-age"]
 }

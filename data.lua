@@ -43,3 +43,9 @@ for _, phase in ipairs{0, 1} do
         scale    = 0.5,
     }}
 end
+
+-- Intel + deception arc (v0.3.0): seismograph, effigy, heads, technologies
+require("prototypes.items")
+require("prototypes.entities")
+require("prototypes.recipes")
+require("prototypes.technologies")
