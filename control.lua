@@ -10,12 +10,14 @@
 --   Seismograph coverage: all map overlays (red/yellow/violet) render only
 --     inside the radius of a powered dr-seismograph. Migrants entering
 --     coverage fire a one-time alert.
---   Effigies: a dr-effigy containing a demolisher head suppresses contested
---     status for its territory (worms of tier <= head size believe it is
---     occupied). Raw heads spoil natively; embalmed heads eat calcite +
---     tungsten while there is an audience; cryo heads need constant power.
---     When suppression fails, a silence window runs before the deception
---     collapses ("exposure"): the territory is queued at a reduced delay.
+--   Effigies (3 tiers): a headed effigy makes neighbours up to its own tier
+--     believe its territory is occupied. Small eats nothing (head just rots);
+--     medium eats calcite + tungsten while there is an audience; big needs
+--     constant power. When upkeep lapses on an otherwise-valid effigy a silence
+--     window runs before the deception collapses ("exposure"): the territory is
+--     queued at a reduced delay. An effigy that is undersized (a bigger worm
+--     moved in next door) simply stops fooling anyone, with no silence window;
+--     the migrant it can't deceive walks in and physically destroys it.
 --   Escalation: demolishers gain effective HP with distance from the map
 --     origin and with every demolisher killed (capped), via heal-back on
 --     segment damage.
@@ -49,13 +51,14 @@ local STATUS_COLOR = {
     ["no-head"] = {r = 0.7, g = 0.7, b = 0.7},
     exposed    = {r = 0.7, g = 0.7, b = 0.7},
 }
+-- Floating labels: only states the player can act on, or that explain why an
+-- effigy with a head still isn't working. Empty ("no-head") and transient
+-- ("exposed") states show NO text - an empty altar is self-evidently empty.
 local STATUS_TEXT = {
     silent     = "SILENT",
     starving   = "STARVING",
     unpowered  = "NO POWER",
-    undersized = "EFFIGY TOO SMALL",
-    ["no-head"] = "NO HEAD",
-    exposed    = "EXPOSED",
+    undersized = "TOO SMALL",
 }
 
 
@@ -96,6 +99,16 @@ local hide_vanilla = settings.startup["dr-hide-vanilla-territory"].value
 -- storage.esc_off             bool      escalation API probe failed; disabled
 
 local function init_storage()
+    -- Destroy render objects owned by existing effigies before the table is
+    -- wiped, or their mounted-overlay/status sprites leak (persist orphaned
+    -- across a config change / mod update).
+    if storage.effigies then
+        for _, reg in pairs(storage.effigies) do
+            if reg.overlay and reg.overlay.valid then reg.overlay.destroy() end
+            if reg.text and reg.text.valid then reg.text.destroy() end
+        end
+    end
+
     storage.cooling             = {}
     storage.migration_queue     = {}
     storage.migrating_units     = {}
@@ -344,6 +357,45 @@ local function destroy_effigy_reg(reg)
     if reg.overlay and reg.overlay.valid then reg.overlay.destroy() end
 end
 
+-- Does this effigy currently have its tier's head socketed?
+local function effigy_has_head(reg)
+    local ent = reg.entity
+    if not (ent and ent.valid) then return false end
+    local inv = ent.get_inventory(defines.inventory.chest)
+    return inv and inv.get_item_count(MOUNT_ITEM[reg.tier or EFFIGY_TIER[ent.name] or 1]) > 0
+end
+
+-- A headed effigy inside this territory, if any (the lie a migrant homes in on).
+local function find_headed_effigy(surface, territory)
+    for _, reg in pairs(storage.effigies) do
+        local ent = reg.entity
+        if ent and ent.valid
+        and territory_of_position(surface, ent.position) == territory
+        and effigy_has_head(reg) then
+            return ent
+        end
+    end
+    return nil
+end
+
+-- An arriving demolisher crushes any headed effigy in the territory it claims:
+-- the fake is exposed and physically destroyed. Empty effigies are left alone.
+local function crush_effigies_in(surface, territory)
+    local victims = {}
+    for _, reg in pairs(storage.effigies) do
+        local ent = reg.entity
+        if ent and ent.valid
+        and territory_of_position(surface, ent.position) == territory
+        and effigy_has_head(reg) then
+            victims[#victims + 1] = ent
+        end
+    end
+    for _, ent in pairs(victims) do
+        if ent.valid then ent.die() end   -- on_entity_died cleans the registry
+    end
+    return #victims > 0
+end
+
 -- Per-heartbeat update of one effigy. Returns true if overlay state changed.
 local function update_effigy(surface, un, reg, tick)
     local ent = reg.entity
@@ -364,12 +416,20 @@ local function update_effigy(surface, un, reg, tick)
     local has_head = inv and inv.get_item_count(MOUNT_ITEM[tier]) > 0
 
     local audience_rank = reg.territory and max_neighbor_rank(surface, reg.territory) or 0
+    -- An effigy fools neighbours only up to its own tier. A bigger worm next
+    -- door was never deceived; it will migrate in and physically destroy the
+    -- effigy on arrival (see crush_effigies_in + migrant targeting). Big
+    -- effigies (tier 3) can never be undersized.
+    local big_enough = tier >= audience_rank
 
     -- Upkeep per tier: 1 = raw head, rot handled by native spoilage;
     -- 2 = embalmed, eats calcite + tungsten while there is an audience;
     -- 3 = cryo, constant power via the hidden interface.
+    -- Skipped when undersized: no point feeding a lie nobody believes.
     local upkeep_ok, fail_status = false, "no-head"
-    if has_head then
+    if has_head and not big_enough then
+        fail_status = "undersized"
+    elseif has_head then
         if tier == 1 then
             upkeep_ok = true
         elseif tier == 2 then
@@ -437,37 +497,30 @@ local function update_effigy(surface, un, reg, tick)
     local old_status      = reg.status
     local new_status
 
-    if has_head and upkeep_ok then
+    if has_head and big_enough and upkeep_ok then
         reg.silence_until = nil
-        if tier >= audience_rank then
-            reg.suppressing = true
-            new_status = "active"
+        reg.suppressing   = true
+        new_status        = "active"
+    elseif was_suppressing and big_enough then
+        -- A valid effigy that just lost its upkeep (or had its head pulled):
+        -- it keeps fooling the neighbours through a silence window, giving the
+        -- player time to restock / re-power / re-socket before exposure.
+        reg.silence_until = reg.silence_until or (tick + silence_ticks())
+        if tick >= reg.silence_until then
+            reg.suppressing   = false
+            reg.silence_until = nil
+            new_status        = "exposed"
+            expose_territory(surface, reg.territory)
         else
-            -- A bigger worm moved in next door: it was never fooled.
-            -- No silence window; suppression just stops. The normal cooling
-            -- scan picks the territory up from here.
-            reg.suppressing = false
-            new_status = "undersized"
-            if old_status ~= "undersized" then
-                game.print(string.format(
-                    "[color=red][Effigy][/color] A larger demolisher is not fooled by the effigy at [gps=%d,%d,%s].",
-                    math.floor(ent.position.x), math.floor(ent.position.y), SURFACE_NAME))
-            end
+            new_status = "silent"
         end
     else
-        if was_suppressing then
-            reg.silence_until = reg.silence_until or (tick + silence_ticks())
-            if tick >= reg.silence_until then
-                reg.suppressing   = false
-                reg.silence_until = nil
-                new_status = "exposed"
-                expose_territory(surface, reg.territory)
-            else
-                new_status = "silent"   -- still fooling them, clock is running
-            end
-        else
-            new_status = fail_status
-        end
+        -- Empty, or undersized: no suppression, no silence window, no nagging.
+        -- The territory is simply contested; migration will bring a worm that
+        -- destroys the effigy when it arrives.
+        reg.suppressing   = false
+        reg.silence_until = nil
+        new_status        = fail_status
     end
 
     reg.status = new_status
@@ -1009,6 +1062,11 @@ script.on_nth_tick(CHECK_INTERVAL, function()
             local center = territory_center(target)
             if not center then goto next_q end
 
+            -- If a headed effigy is fooling no one here (undersized / exposed),
+            -- the migrant homes straight in on it and crushes it on arrival.
+            local fake = find_headed_effigy(surface, target)
+            local dest = (fake and fake.position) or center
+
             local origin_pos = get_head_pos(src_units[1])
             if not origin_pos then goto next_q end
 
@@ -1018,13 +1076,13 @@ script.on_nth_tick(CHECK_INTERVAL, function()
             migrant.activity_mode = defines.segmented_unit_activity_mode.full
             migrant.set_ai_state{
                 type        = defines.segmented_unit_ai_state.investigating,
-                destination = center,
+                destination = dest,
             }
 
             storage.migrating_units[#storage.migrating_units + 1] = {
                 unit             = migrant,
                 target_territory = target,
-                target_pos       = center,
+                target_pos       = dest,
             }
             to_remove[#to_remove + 1] = i
             ::next_q::
@@ -1052,6 +1110,7 @@ script.on_nth_tick(CHECK_INTERVAL, function()
             local head = get_head_pos(unit)
             if head and dist(head, m.target_pos) <= ARRIVAL_RADIUS then
                 unit.territory = m.target_territory
+                crush_effigies_in(surface, m.target_territory)  -- the worm destroys the fake
                 overlay_dirty  = true
             else
                 remaining[#remaining + 1] = m
