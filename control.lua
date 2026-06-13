@@ -39,27 +39,10 @@ local TIER_RANK = {["small-demolisher"] = 1, ["medium-demolisher"] = 2, ["big-de
 local EFFIGY_TIER    = {["dr-effigy-small"] = 1, ["dr-effigy-medium"] = 2, ["dr-effigy-big"] = 3}
 local MOUNT_ITEM     = {"dr-head-small-raw", "dr-head-medium-embalmed", "dr-head-big-cryo"}
 local MOUNTED_SPRITE = {"dr-effigy-small-mounted", "dr-effigy-medium-mounted", "dr-effigy-big-mounted"}
-local TEXT_OFFSET    = {-2.4, -3.0, -4.8}   -- floating label height per tier
-local TEXT_SCALE     = {1.4, 1.6, 2.0}
 
-local STATUS_COLOR = {
-    active     = nil,                              -- no floating text when healthy
-    silent     = {r = 1.0, g = 0.6, b = 0.1},
-    starving   = {r = 1.0, g = 0.3, b = 0.2},
-    unpowered  = {r = 1.0, g = 0.3, b = 0.2},
-    undersized = {r = 1.0, g = 0.3, b = 0.2},
-    ["no-head"] = {r = 0.7, g = 0.7, b = 0.7},
-    exposed    = {r = 0.7, g = 0.7, b = 0.7},
-}
--- Floating labels: only states the player can act on, or that explain why an
--- effigy with a head still isn't working. Empty ("no-head") and transient
--- ("exposed") states show NO text - an empty altar is self-evidently empty.
-local STATUS_TEXT = {
-    silent     = "SILENT",
-    starving   = "STARVING",
-    unpowered  = "NO POWER",
-    undersized = "TOO SMALL",
-}
+-- Effigy condition (reg.status) is tracked for /dr-status only; there is no
+-- floating in-world text. The player reads effigy state from the world (mounted
+-- vs empty sprite, a worm arriving to crush a failed one) and the map overlay.
 
 
 -- --- Runtime setting accessors (ticks at 60 UPS) ------------------------------
@@ -90,8 +73,9 @@ local hide_vanilla = settings.startup["dr-hide-vanilla-territory"].value
 -- storage.contested_renders   LuaRenderObject[]
 -- storage.next_migration_tick uint
 -- storage.seismographs        {unit_number -> LuaEntity}
--- storage.effigies            {unit_number -> reg}; reg = {entity, eei, feed_acc,
---                              suppressing, status, silence_until, territory, text}
+-- storage.effigies            {unit_number -> reg}; reg = {entity, tier, eei,
+--                              feed_acc, suppressing, status, silence_until,
+--                              territory, overlay}
 -- storage.alerted             {unit}[]  migrants already announced
 -- storage.kills               uint      lifetime demolisher kills (the grudge)
 -- storage.coverage_sig        string    change detector for seismo network
@@ -99,13 +83,12 @@ local hide_vanilla = settings.startup["dr-hide-vanilla-territory"].value
 -- storage.esc_off             bool      escalation API probe failed; disabled
 
 local function init_storage()
-    -- Destroy render objects owned by existing effigies before the table is
-    -- wiped, or their mounted-overlay/status sprites leak (persist orphaned
-    -- across a config change / mod update).
+    -- Destroy mounted-overlay render objects owned by existing effigies before
+    -- the table is wiped, or they leak (persist orphaned across a config change
+    -- / mod update).
     if storage.effigies then
         for _, reg in pairs(storage.effigies) do
             if reg.overlay and reg.overlay.valid then reg.overlay.destroy() end
-            if reg.text and reg.text.valid then reg.text.destroy() end
         end
     end
 
@@ -283,28 +266,6 @@ end
 
 -- --- Effigy state machine ---------------------------------------------------------
 
-local function set_status_text(reg, status)
-    local label = STATUS_TEXT[status]
-    if not label then
-        if reg.text and reg.text.valid then reg.text.destroy() end
-        reg.text = nil
-        return
-    end
-    if reg.text and reg.text.valid then
-        reg.text.text  = label
-        reg.text.color = STATUS_COLOR[status]
-    else
-        reg.text = rendering.draw_text{
-            text      = label,
-            surface   = reg.entity.surface,
-            target    = {entity = reg.entity, offset = {0, TEXT_OFFSET[reg.tier] or -2.8}},
-            color     = STATUS_COLOR[status],
-            scale     = TEXT_SCALE[reg.tier] or 1.6,
-            alignment = "center",
-        }
-    end
-end
-
 -- Native slot filters enforce the diagonal physically: the wrong head will
 -- not go into the slot, same mechanism that keeps coal out of a lab.
 -- Slot 1 = the tier's mountable head; medium adds 2 = calcite, 3 = tungsten.
@@ -353,7 +314,6 @@ end
 
 local function destroy_effigy_reg(reg)
     if reg.eei and reg.eei.valid then reg.eei.destroy() end
-    if reg.text and reg.text.valid then reg.text.destroy() end
     if reg.overlay and reg.overlay.valid then reg.overlay.destroy() end
 end
 
@@ -524,7 +484,6 @@ local function update_effigy(surface, un, reg, tick)
     end
 
     reg.status = new_status
-    set_status_text(reg, new_status)
 
     -- One-time warning on degradation while still suppressing
     if new_status == "silent" and old_status ~= "silent" then

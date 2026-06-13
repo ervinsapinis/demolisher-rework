@@ -44,7 +44,7 @@ Off the diagonal, nothing works: small heads can't be preserved (drying ruins th
 
 When upkeep fails, a **silence window** (default 5 min) starts: refill, re-socket, or restore power in time and nobody notices. If the window expires, the deception is **exposed**: the territory is queued for migration at a reduced delay (default 50%). The neighbours noticed the silence, and they're coming sooner.
 
-Effigies are containers: inserters can load heads and feed automatically. The monument visually transforms when a head is mounted, and a floating status label warns of SILENT / STARVING / NO POWER / EFFIGY TOO SMALL states.
+Effigies are containers: inserters can load heads and feed automatically. The monument visually transforms when a head is mounted. There is no status UI: you read an effigy's state from the world (mounted vs empty, a worm arriving to crush a failed one) and from the map overlay. `/dr-status` dumps the details if you want them.
 
 ## Escalation: they remember
 

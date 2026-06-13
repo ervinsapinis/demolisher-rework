@@ -1,6 +1,6 @@
 {
   "name": "demolisher-rework",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "title": "Demolisher Rework",
   "author": "Ervins",
   "description": "Overhauls demolishers on Vulcanus. Three-phase repopulation: cooling, contested, then a neighbouring worm migrates in to reclaim. Territory intel is earned, not given: the map shows nothing until seismograph stations listen for the worms. Killed demolishers drop their heads; socket one into a territorial effigy and the neighbours believe the territory is occupied. Raw heads rot, Gleba embalming wants feeding, Aquilo cryonics want power. Demolishers grow tougher with distance and with every kill. Fully configurable.",
