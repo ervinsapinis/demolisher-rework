@@ -119,7 +119,12 @@ end
 
 -- ── Hidden power interface for the big (cryo) effigy ─────────────────────────
 -- Created/destroyed by script underneath the effigy when a cryo head is
--- socketed. Buffer and usage set at runtime from the dr-cryo-power-mw setting.
+-- socketed. The draw is baked into the prototype's energy_usage (the standard,
+-- reliable consumer-EEI pattern) rather than poked at runtime, so it actually
+-- registers as a grid load. Buffer holds ~5 s so a brownout drains gradually.
+
+local cryo_mw   = settings.startup["dr-cryo-power-mw"].value
+local buffer_mj = math.max(1, math.floor(cryo_mw * 5))   -- ~5 seconds of draw
 
 local eei = util.table.deepcopy(
     data.raw["electric-energy-interface"]["electric-energy-interface"])
@@ -134,12 +139,13 @@ eei.max_health          = 1
 eei.collision_mask      = {layers = {}}
 eei.energy_source       = {
     type              = "electric",
-    buffer_capacity   = "60MJ",
+    buffer_capacity   = buffer_mj .. "MJ",
     usage_priority    = "secondary-input",
-    input_flow_limit  = "200MW",
+    input_flow_limit  = (cryo_mw * 2) .. "MW",
     output_flow_limit = "0W",
 }
-eei.energy_usage        = "10MW"
+eei.energy_usage        = cryo_mw .. "MW"
+eei.energy_production   = "0W"   -- base editor EEI defaults to producing; we only consume
 eei.picture             = nil
 eei.pictures            = nil
 eei.animation           = nil

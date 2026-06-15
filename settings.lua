@@ -97,6 +97,17 @@ data:extend{
         maximum_value = 100.0,
         order         = "d-c",
     },
+    -- Grand (cryo) effigy power draw (baked into the hidden interface's
+    -- prototype energy_usage → startup only, same as the seismograph)
+    {
+        type          = "int-setting",
+        name          = "dr-cryo-power-mw",
+        setting_type  = "startup",
+        default_value = 10,
+        minimum_value = 1,
+        maximum_value = 500,
+        order         = "d-d",
+    },
 }
 
 -- ─── Runtime-global settings (changeable mid-save) ────────────────────────────
@@ -186,15 +197,6 @@ data:extend{
         minimum_value = 0.05,
         maximum_value = 60.0,
         order         = "f-d",
-    },
-    {
-        type          = "int-setting",
-        name          = "dr-cryo-power-mw",
-        setting_type  = "runtime-global",
-        default_value = 10,
-        minimum_value = 1,
-        maximum_value = 500,
-        order         = "f-e",
     },
 
     -- ── Escalation ───────────────────────────────────────────────────────────

@@ -57,7 +57,6 @@ local function head_drop_chance()     return settings.global["dr-head-drop-chanc
 local function silence_ticks()        return math.floor(settings.global["dr-silence-window-min"].value * 3600) end
 local function exposure_factor()      return settings.global["dr-exposure-delay-factor"].value end
 local function feed_per_min()         return settings.global["dr-feed-per-min"].value end
-local function cryo_power_mw()        return settings.global["dr-cryo-power-mw"].value end
 local function esc_dist_per_km()      return settings.global["dr-esc-distance-per-km"].value end
 local function esc_per_kill()         return settings.global["dr-esc-per-kill"].value end
 local function esc_kill_cap()         return settings.global["dr-esc-kill-cap"].value end
@@ -411,17 +410,21 @@ local function update_effigy(surface, un, reg, tick)
                 end
             end
         elseif tier == 3 then
+            -- The hidden interface draws the configured MW from the grid via its
+            -- baked-in energy_usage; we only read its buffer to judge "powered".
+            -- Created full so a freshly-socketed head reads powered immediately;
+            -- a sustained brownout drains the ~5 s buffer, then "unpowered".
             if not (reg.eei and reg.eei.valid) then
                 reg.eei = surface.create_entity{
                     name = "dr-effigy-power", position = ent.position, force = ent.force,
                 }
-                if reg.eei then reg.eei.destructible = false end
+                if reg.eei then
+                    reg.eei.destructible = false
+                    reg.eei.energy       = reg.eei.electric_buffer_size  -- start full
+                end
             end
             if reg.eei and reg.eei.valid then
-                local usage_per_tick = cryo_power_mw() * 1e6 / 60
-                reg.eei.power_usage          = usage_per_tick
-                reg.eei.electric_buffer_size = usage_per_tick * 600   -- 10 s buffer
-                if reg.eei.energy >= usage_per_tick * 150 then        -- 2.5 s reserve
+                if reg.eei.energy >= reg.eei.electric_buffer_size * 0.15 then
                     upkeep_ok = true
                 else
                     fail_status = "unpowered"
